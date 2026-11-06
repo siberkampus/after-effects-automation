@@ -18,7 +18,7 @@ from config.settings import PLAN_PATH, PROJECTS_DIR, EXPORTS_DIR
 
 SERVER_SCRIPT = os.environ.get(
     "AE_MCP_SERVER_SCRIPT",
-    r"C:\\Users\\ACER\\Documents\\ae-motion\\dist\\index.js",
+    os.path.join(os.path.expanduser("~"), "Documents", "ae-motion", "dist", "index.js"),
 )
 DEFAULT_RENDER_TIMEOUT = 900
 QA_ENABLED = os.getenv("AE_ENABLE_CLAUDE_QA", "0").strip().lower() in {"1", "true", "yes"}
