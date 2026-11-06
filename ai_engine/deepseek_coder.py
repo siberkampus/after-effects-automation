@@ -19,7 +19,7 @@ def generate_mcp_commands(scene_data, feedback=None):
     IMAGE PATH: "{scene_data.get('local_image_path', '')}"
     HUD/FUI DESIGN REQUIREMENTS (when HUD COMPONENTS is non-empty):
     - Treat this as a premium sci-fi interface shot, not generic cyber illustration.
-    - Build separate editable native shape/text layers; target 28-42 purposeful layers.
+    - Build separate editable native shape/text layers; target 24-30 purposeful layers so the response remains complete and executable.
     - Use deep navy, subtle grid, thin cyan/blue strokes, asymmetric technical frames,
       corner brackets, radial ticks, compact data panels and deliberate negative space.
     - Radar: 3+ concentric outline ellipses, separated ring segments, 12-20 radial ticks,
@@ -27,7 +27,7 @@ def generate_mcp_commands(scene_data, feedback=None):
     - Target lock: four independent L-shaped brackets, center reticle and tracking markers;
       animate brackets converging before settling.
     - Data panels: fine outline borders, header dividers, short labels and micro-bars.
-    - Animate at least 4 distinct elements with set_keyframes within scene duration.
+    - Animate at least 4 distinct elements with set_keyframes within scene duration; use no more than 6 keyframe calls and 2 effect calls.
     - Use Opacity, Scale or Position only; reference exact existing layer names.
     - Apply glow sparingly to 2-4 hero elements. Never import UI screenshots in HUD mode.
     - Avoid oversized filled circles, random rectangles, invented metrics and unreadable text.
@@ -35,7 +35,7 @@ def generate_mcp_commands(scene_data, feedback=None):
     
     AVAILABLE TOOLS (Use these EXACT schemas):
     
-    1. create_comp: {{"name": "Scene_{scene_data.get('id', '1')}", "width": 1920, "height": 1080, "fps": 30, "duration": 5.0, "bg_color": [0,0,0]}}
+    1. create_comp: {{"name": "Scene_{scene_data.get('id', '1')}", "width": 1920, "height": 1080, "fps": 30, "duration": {scene_data.get('duration_seconds', 5)}, "bg_color": [0.012,0.031,0.071]}}
        (CRITICAL: The name MUST be exactly "Scene_{scene_data.get('id', '1')}")
     
     2. import_footage: {{"path": "string"}} 
@@ -80,12 +80,25 @@ def generate_mcp_commands(scene_data, feedback=None):
     if feedback:
         prompt += f"\n\nCRITICAL FIX REQUIRED FROM PREVIOUS ATTEMPT:\n{feedback}\n"
     
-    response = ask_deepseek(prompt, temperature=0.2)
+    response = ask_deepseek(prompt, temperature=0.1, max_tokens=8192)
     response = re.sub(r"^```(?:json)?\s*", "", response.strip())
     response = re.sub(r"\s*```$", "", response.strip())
     
+    # Parse the first complete JSON array, tolerating prose/fences around it.
+    decoder = json.JSONDecoder()
+    for index, char in enumerate(response):
+        if char == "[":
+            try:
+                parsed, _ = decoder.raw_decode(response[index:])
+                if isinstance(parsed, list):
+                    return parsed
+            except json.JSONDecodeError:
+                continue
     try:
-        return json.loads(response)
-    except Exception as e:
-        print(f"DeepSeek JSON Hatası: {e}")
-        return []
+        parsed = json.loads(response)
+        if isinstance(parsed, dict) and isinstance(parsed.get("commands"), list):
+            return parsed["commands"]
+    except json.JSONDecodeError as error:
+        print(f"DeepSeek JSON Hatası: {error}")
+    print("DeepSeek JSON Hatası: Tam bir komut dizisi bulunamadı (yanıt kesilmiş olabilir).")
+    return []
