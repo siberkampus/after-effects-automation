@@ -32,7 +32,7 @@ def _read_text(result):
         value = getattr(item, "text", None)
         if value:
             parts.append(value)
-    return "\\n".join(parts)
+    return "\n".join(parts)
 
 
 def _parse_result(result, tool_name):
@@ -209,14 +209,14 @@ async def run_ai_director():
                     print(f"  [SAHNE HATASI] Sahne {scene.get('id')}: {exc}")
                     print("  [DURDURULDU] AE durumunu kontrol etmeden sonraki sahne gönderilmiyor.")
                     break
-    print("\\n=== YÖNETMEN DÖNGÜSÜ TAMAMLANDI ===")
+    print("\n=== YÖNETMEN DÖNGÜSÜ TAMAMLANDI ===")
 
 
 if __name__ == "__main__":
     try:
         asyncio.run(run_ai_director())
     except KeyboardInterrupt:
-        print("\\n[İPTAL] Kullanıcı işlemi durdurdu.")
+        print("\n[İPTAL] Kullanıcı işlemi durdurdu.")
     except Exception as exc:
-        print(f"\\n[FATAL] {exc}")
+        print(f"\n[FATAL] {exc}")
         raise
