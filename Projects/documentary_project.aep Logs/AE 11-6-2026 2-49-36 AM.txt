@@ -1,0 +1,16 @@
+Adobe After Effects v26.3 Windows 64 render log for project “documentary_project.aep”
+
+Rendering started on 11/6/2026 at 2:49:36 AM
+
+  11/6/2026 2:49:36 AM: Starting composition “Scene_1”.
+
+  Render Settings: Best Settings  Quality: Best  Resolution: Full  Size: 1920 x 1080  Proxy Use: Use No Proxies  Effects: Current Settings  Disk Cache: Read Only  Color Depth: Current Settings  Frame Blending: On for Checked Layers  Field Render: Off  Pulldown: Off  Motion Blur: On for Checked Layers     Solos: Current Settings     Time Span: Work Area  Start: 0:00:00:00  End: 0:00:05:29  Duration: 0:00:06:00  Frame Rate: 30,00 (comp)  Guide Layers: All Off  Skip Existing Files: Off    Output Module: H.264 - Match Render Settings - 15 Mbps  Output To: C:\Users\ACER\Documents\AE_AI_AUTOMATION\Exports\scene_01.mp4  Format: H.264  Output Info: VBR, Target 15 Mbps  Include: Project Link  Output Audio: On (if comp has audio)  Channels: RGB  Depth: Millions of Colors  Color: Premultiplied  Resize: -  Crop: -  Final Size: 1920 x 1080  Profile: -  Embed Profile:      Post-Render Action: None           After Effects error: render can't continue - out of disk space (26  ::  165)  An unexpected error occurred while exporting a composition.
+
+Error Code: 6662
+
+Please restart After Effects and retry the export.  11/6/2026 2:49:37 AM: Finished composition “Scene_1”.
+
+
+  Total Time Elapsed: 
+Log closed on 11/6/2026 at 2:49:37 AM
+

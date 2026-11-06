@@ -1,0 +1,301 @@
+{
+    "video_title": "Cryptographic Shield: Breach and Defense",
+    "production_mode": "hud_fui",
+    "visual_direction": "Near-black deep-navy field with thin precise cyan and electric-blue strokes, restrained magenta accents, and red reserved for threat escalation. Outline-only geometry, nested circular instruments, segmented rings, radial ticks, corner brackets, compact data panels, and network diagrams. Asymmetric modular layouts with deliberate negative space; every element communicates breach, acceleration, or defense. Motion builds from sparse node emergence to dense red data flow, then resolves into a central shield activation and shatter.",
+    "scenes": [
+        {
+            "id": 1,
+            "duration_seconds": 6,
+            "narration_summary": "A shadowy hacker initiates a sophisticated cyber attack; the screen is dark and watchful.",
+            "visual_type": "illustration",
+            "scene_kind": "hud_interface",
+            "design_style": "cyber_security_hud",
+            "visual_description": "Deep-navy void with a faint technical grid. Focal point: an off-center circular scanner at left-third, its radar sweep rotating slowly. A thin vertical data panel on the right edge shows a status readout with no invented metrics, only abstract bars. Corner brackets frame the composition asymmetrically. A single magenta accent line pulses near the scanner. Negative space dominates the center-right, preparing for network emergence. Motion: radar sweep rotates clockwise; grid lines drift subtly; status bars flicker once.",
+            "image_search_queries": [
+                "abstract dark navy technology background subtle digital grid",
+                "minimal cyan blue cybersecurity network visualization",
+                "futuristic data interface background texture"
+            ],
+            "hud_components": [
+                "circular_scanner",
+                "radar_sweep",
+                "status_readout",
+                "technical_frame",
+                "bar_graph"
+            ],
+            "color_palette": {
+                "background": [
+                    3,
+                    8,
+                    18
+                ],
+                "primary": [
+                    0,
+                    220,
+                    255
+                ],
+                "secondary": [
+                    0,
+                    110,
+                    180
+                ],
+                "accent": [
+                    255,
+                    45,
+                    145
+                ],
+                "alert": [
+                    255,
+                    55,
+                    70
+                ]
+            },
+            "stroke_style": {
+                "fill": "none",
+                "stroke_width_px": 2,
+                "glow": "subtle"
+            },
+            "layout": "asymmetric_modular",
+            "motion_intensity": "low",
+            "hud_animation": "radar_sweep",
+            "animation_style": "parallax_slide",
+            "on_screen_text": "SYSTEM SCANNING"
+        },
+        {
+            "id": 2,
+            "duration_seconds": 7,
+            "narration_summary": "Glowing digital nodes appear one by one across the dark screen, connecting into a complex data network.",
+            "visual_type": "illustration",
+            "scene_kind": "hud_interface",
+            "design_style": "cyber_security_hud",
+            "visual_description": "The dark field now hosts a growing network. Focal point: a cluster of nodes emerging from the lower-left and spreading diagonally toward upper-right. Each node is a small outlined circle with a radial tick; connecting lines draw between them sequentially. A technical frame with corner brackets anchors the composition. A compact data panel at bottom-right lists abstract connection states. Negative space remains at top-left. Motion: nodes pop in one by one with a brief pulse; connecting lines draw from node to node; the network builds outward in a controlled cascade.",
+            "image_search_queries": [
+                "abstract network nodes connecting lines dark background",
+                "cyan digital network diagram minimal",
+                "futuristic data network visualization outline"
+            ],
+            "hud_components": [
+                "network_nodes",
+                "connecting_lines",
+                "technical_frame",
+                "data_panel",
+                "particle_field"
+            ],
+            "color_palette": {
+                "background": [
+                    3,
+                    8,
+                    18
+                ],
+                "primary": [
+                    0,
+                    220,
+                    255
+                ],
+                "secondary": [
+                    0,
+                    110,
+                    180
+                ],
+                "accent": [
+                    255,
+                    45,
+                    145
+                ],
+                "alert": [
+                    255,
+                    55,
+                    70
+                ]
+            },
+            "stroke_style": {
+                "fill": "none",
+                "stroke_width_px": 2,
+                "glow": "subtle"
+            },
+            "layout": "asymmetric_modular",
+            "motion_intensity": "medium",
+            "hud_animation": "network_build",
+            "animation_style": "parallax_slide",
+            "on_screen_text": "NETWORK FORMING"
+        },
+        {
+            "id": 3,
+            "duration_seconds": 6,
+            "narration_summary": "The data flow accelerates, turning red to indicate a critical security threat.",
+            "visual_type": "illustration",
+            "scene_kind": "hud_interface",
+            "design_style": "cyber_security_hud",
+            "visual_description": "The established network now pulses with rapid data streams. Focal point: the central network cluster where connecting lines shift from cyan to red, with red particles racing along the connections. A warning indicator appears at top-right, a segmented ring with a red crosshair. The technical frame's corner brackets flash red briefly. A waveform at bottom-left spikes. Negative space is compressed as the network fills more of the frame. Motion: data streams accelerate along lines; color transitions from cyan to red; warning indicator pulses; waveform spikes in sync.",
+            "image_search_queries": [
+                "red alert data flow network dark background",
+                "cyber threat warning interface red lines",
+                "abstract digital data stream acceleration"
+            ],
+            "hud_components": [
+                "network_nodes",
+                "connecting_lines",
+                "warning_indicator",
+                "waveform",
+                "particle_field",
+                "technical_frame"
+            ],
+            "color_palette": {
+                "background": [
+                    3,
+                    8,
+                    18
+                ],
+                "primary": [
+                    0,
+                    220,
+                    255
+                ],
+                "secondary": [
+                    0,
+                    110,
+                    180
+                ],
+                "accent": [
+                    255,
+                    45,
+                    145
+                ],
+                "alert": [
+                    255,
+                    55,
+                    70
+                ]
+            },
+            "stroke_style": {
+                "fill": "none",
+                "stroke_width_px": 2,
+                "glow": "subtle"
+            },
+            "layout": "asymmetric_modular",
+            "motion_intensity": "high",
+            "hud_animation": "data_stream",
+            "animation_style": "parallax_slide",
+            "on_screen_text": "CRITICAL THREAT"
+        },
+        {
+            "id": 4,
+            "duration_seconds": 7,
+            "narration_summary": "A massive cryptographic shield activates in the center.",
+            "visual_type": "illustration",
+            "scene_kind": "hud_interface",
+            "design_style": "cyber_security_hud",
+            "visual_description": "The red network recedes slightly as a large circular shield materializes at center. Focal point: the shield, built from nested segmented rings with radial ticks and a hexagonal grid pattern inside. It activates with a bright cyan pulse, then settles into a steady glow. A progress ring around the shield fills clockwise. Technical frame corner brackets lock onto the shield. A data panel at left shows abstract shield status. Negative space returns around the shield. Motion: shield rings draw on sequentially; hex grid fades in; progress ring fills; a pulse radiates outward.",
+            "image_search_queries": [
+                "cryptographic shield digital interface cyan",
+                "futuristic circular shield HUD outline",
+                "cyber security shield activation dark background"
+            ],
+            "hud_components": [
+                "progress_ring",
+                "hex_grid",
+                "circular_scanner",
+                "technical_frame",
+                "data_panel",
+                "target_lock"
+            ],
+            "color_palette": {
+                "background": [
+                    3,
+                    8,
+                    18
+                ],
+                "primary": [
+                    0,
+                    220,
+                    255
+                ],
+                "secondary": [
+                    0,
+                    110,
+                    180
+                ],
+                "accent": [
+                    255,
+                    45,
+                    145
+                ],
+                "alert": [
+                    255,
+                    55,
+                    70
+                ]
+            },
+            "stroke_style": {
+                "fill": "none",
+                "stroke_width_px": 2,
+                "glow": "subtle"
+            },
+            "layout": "asymmetric_modular",
+            "motion_intensity": "medium",
+            "hud_animation": "shield_activation",
+            "animation_style": "parallax_slide",
+            "on_screen_text": "SHIELD ACTIVE"
+        },
+        {
+            "id": 5,
+            "duration_seconds": 6,
+            "narration_summary": "The red data flow collides with the shield and shatters into digital fragments, securing the network.",
+            "visual_type": "illustration",
+            "scene_kind": "hud_interface",
+            "design_style": "cyber_security_hud",
+            "visual_description": "The red data streams surge toward the central shield. Focal point: the impact point on the shield's surface, where red lines collide and shatter into small digital fragments that scatter outward. The shield holds steady, its rings pulsing. Fragments are tiny outlined triangles and squares that fade as they disperse. A status readout at bottom-right changes to a secure state. The technical frame's corner brackets return to cyan. Negative space clears as fragments dissipate. Motion: red streams accelerate inward; impact triggers a burst of fragments; fragments scatter and fade; shield rings pulse once; status readout updates.",
+            "image_search_queries": [
+                "digital fragments shatter impact dark background",
+                "cyber shield deflecting attack visualization",
+                "abstract particle explosion cyan red interface"
+            ],
+            "hud_components": [
+                "particle_field",
+                "digital_glitch",
+                "status_readout",
+                "technical_frame",
+                "circular_scanner",
+                "warning_indicator"
+            ],
+            "color_palette": {
+                "background": [
+                    3,
+                    8,
+                    18
+                ],
+                "primary": [
+                    0,
+                    220,
+                    255
+                ],
+                "secondary": [
+                    0,
+                    110,
+                    180
+                ],
+                "accent": [
+                    255,
+                    45,
+                    145
+                ],
+                "alert": [
+                    255,
+                    55,
+                    70
+                ]
+            },
+            "stroke_style": {
+                "fill": "none",
+                "stroke_width_px": 2,
+                "glow": "subtle"
+            },
+            "layout": "asymmetric_modular",
+            "motion_intensity": "high",
+            "hud_animation": "glitch_reveal",
+            "animation_style": "parallax_slide",
+            "on_screen_text": "NETWORK SECURED"
+        }
+    ],
+    "total_duration_seconds": 32
+}
