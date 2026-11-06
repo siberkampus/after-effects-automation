@@ -1,535 +1,227 @@
-# ai_director.py
+"""Reliable After Effects director.
+
+HUD scenes are built deterministically with native AE shape/text layers. DeepSeek is
+not called per scene to invent MCP JSON. Claude QA is optional/advisory. A saved
+project is rendered through ae-motion's asynchronous render_start/render_status API.
+"""
 import asyncio
 import json
 import os
-import re
 import shutil
+import time
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
-from ai_engine.deepseek_coder import generate_mcp_commands
-from ai_engine.claude_vision import analyze_scene_image
+from ai_engine.hud_builder import HudBuilder, HudBuildError
 from config.settings import PLAN_PATH, PROJECTS_DIR, EXPORTS_DIR
 
-
-# İstersen bu yolu Windows ortam değişkeniyle değiştirebilirsin:
-# PowerShell:
-# $env:AE_MCP_SERVER_SCRIPT = "C:\tam\yol\ae-motion\dist\index.js"
 SERVER_SCRIPT = os.environ.get(
     "AE_MCP_SERVER_SCRIPT",
-    r"C:\Users\ACER\Documents\ae-motion\dist\index.js",
+    r"C:\\Users\\ACER\\Documents\\ae-motion\\dist\\index.js",
 )
-
-MAX_RETRIES = 2
-PREVIEW_TIME_SECONDS = 1.0
-
-
-def _read_tool_text(result):
-    """MCP yanıtından metni güvenli şekilde al."""
-    if not getattr(result, "content", None):
-        return ""
-    first = result.content[0]
-    return getattr(first, "text", str(first))
+DEFAULT_RENDER_TIMEOUT = 900
+QA_ENABLED = os.getenv("AE_ENABLE_CLAUDE_QA", "0").strip().lower() in {"1", "true", "yes"}
+RENDER_DRAFT = os.getenv("AE_RENDER_DRAFT", "0").strip().lower() in {"1", "true", "yes"}
+RENDER_DELIVER = os.getenv("AE_RENDER_DELIVER", "0").strip().lower() in {"1", "true", "yes"}
 
 
-def _extract_id(raw_text):
-    """MCP JSON yanıtındaki id alanını bul."""
+def _read_text(result):
+    parts = []
+    for item in getattr(result, "content", []) or []:
+        value = getattr(item, "text", None)
+        if value:
+            parts.append(value)
+    return "\\n".join(parts)
+
+
+def _parse_result(result, tool_name):
+    if getattr(result, "isError", False):
+        raise RuntimeError(f"{tool_name}: {_read_text(result)[:1000]}")
+    raw = _read_text(result)
+    if not raw:
+        raise RuntimeError(f"{tool_name}: MCP boş yanıt döndürdü.")
     try:
-        payload = json.loads(raw_text)
-        if isinstance(payload, dict) and payload.get("id") is not None:
-            return int(payload["id"])
-        # Bazı MCP sunucuları sonucu sarmalanmış döndürebilir.
-        for value in payload.values() if isinstance(payload, dict) else []:
-            if isinstance(value, dict) and value.get("id") is not None:
-                return int(value["id"])
-    except (json.JSONDecodeError, TypeError, ValueError):
-        pass
-
-    match = re.search(r'"id"\s*:\s*(\d+)', raw_text)
-    return int(match.group(1)) if match else None
-
-
-def _normalize_color(color):
-    if isinstance(color, list) and len(color) == 3:
-        try:
-            values = [float(component) for component in color]
-            if any(component > 1.0 for component in values):
-                values = [component / 255.0 for component in values]
-            return values
-        except (TypeError, ValueError):
-            return color
-    return color
-
-
-def _normalize_layer_options(options):
-    options = dict(options or {})
-
-    if "color" in options:
-        options["color"] = _normalize_color(options["color"])
-
-    shape = options.get("shape")
-    if isinstance(shape, dict):
-        shape = dict(shape)
-        if "fill" in shape:
-            shape["fill"] = _normalize_color(shape["fill"])
-        if "stroke" in shape:
-            shape["stroke"] = _normalize_color(shape["stroke"])
-        options["shape"] = shape
-
-    return options
-
-
-def _prepare_keyframes_args(args, layer_map, last_layer_id):
-    new_args = {}
-    layer_name = args.get("layer") or args.get("layer_name")
-
-    if not layer_name or layer_name not in layer_map:
-        return None
-    new_args["layer_id"] = int(layer_map[layer_name])
-
-    path = args.get("property") or args.get("path")
-    new_args["path"] = path
-
-    old_keys = args.get("keyframes") or args.get("keys") or []
-    new_keys = []
-
-    for key in old_keys:
-        key_time = key.get("time")
-        if key_time is None:
-            key_time = key.get("t", 0.0)
-
-        value = key.get("value")
-        if value is None:
-            value = key.get("v", [0])
-
-        if path == "Opacity":
-            if isinstance(value, list) and value:
-                value = value[0]
-            value = float(value)
-        elif path in ("Scale", "Position"):
-            if not isinstance(value, list):
-                value = [float(value), float(value)]
-            else:
-                value = [float(component) for component in value]
-
-        new_keys.append({"t": float(key_time), "v": value})
-
-    new_args["keys"] = new_keys
-    return new_args
-
-
-def _prepare_command(
-    command,
-    comp_id,
-    layer_map,
-    last_layer_id,
-    footage_id,
-    image_available,
-    forced_comp_name,
-):
-    """DeepSeek komutlarını AE MCP araçlarının beklediği argümanlara çevir."""
-    tool_name = command.get("tool")
-    args = dict(command.get("arguments") or {})
-
-    if not tool_name:
-        return None, None
-
-    if tool_name == "create_comp":
-        args["name"] = forced_comp_name
-        # Lock the background to valid normalized RGB values; do not trust LLM color ranges.
-        args["bg_color"] = [0.012, 0.031, 0.071]
-        return tool_name, args
-
-    # Görsel yoksa dosya içe aktarma komutlarını çalıştırma.
-    if not image_available and tool_name == "import_footage":
-        print("       [ATLANDI] Görsel bulunmadığı için import_footage atlandı.")
-        return None, None
-
-    if tool_name == "add_layer":
-        options = dict(args.get("options") or {})
-
-        # Eski prompt sürümlerinin üst seviye alanlarını da destekle.
-        for field in (
-            "text", "color", "item_id", "name",
-            "text_style", "shape", "position",
-        ):
-            if field in args:
-                options[field] = args[field]
-
-        kind = args.get("kind") or args.get("type")
-
-        if not image_available and kind == "footage":
-            print("       [ATLANDI] Görsel bulunmadığı için footage katmanı atlandı.")
-            return None, None
-
-        if "name" not in options:
-            options["name"] = f"Layer_{len(layer_map) + 1}"
-
-        options = _normalize_layer_options(options)
-        return "add_layer", {
-            "comp_id": comp_id,
-            "kind": kind,
-            "options": options,
-        }
-
-    if tool_name == "set_keyframes":
-        prepared = _prepare_keyframes_args(args, layer_map, last_layer_id)
-        return (tool_name, prepared) if prepared else (None, None)
-
-    if tool_name == "apply_effect":
-        if args.get("layer") in layer_map:
-            layer_id = int(layer_map[args["layer"]])
-        elif args.get("layer_name") in layer_map:
-            layer_id = int(layer_map[args["layer_name"]])
-        else:
-            return None, None
-
-        return tool_name, {
-            "layer_id": layer_id,
-            "match_name": args.get("effect") or args.get("match_name"),
-        }
-
-    # Bilinmeyen araçları değiştirmeden ilet.
-    if comp_id is not None:
-        args_str = json.dumps(args)
-        args_str = (
-            args_str.replace('"AUTO_COMP"', str(comp_id))
-            .replace('"comp_name"', str(comp_id))
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        raise RuntimeError(f"{tool_name}: JSON olmayan yanıt: {raw[:500]}")
+    if isinstance(data, dict) and data.get("error"):
+        error = data["error"]
+        raise RuntimeError(
+            f"{tool_name} [{error.get('code', 'ERROR')}]: "
+            f"{error.get('message', raw)}"
         )
-        if footage_id is not None:
-            args_str = args_str.replace('"AUTO_ID"', str(footage_id))
-        args = json.loads(args_str)
-
-    return tool_name, args
+    if not isinstance(data, dict):
+        raise RuntimeError(f"{tool_name}: Beklenmeyen yanıt: {raw[:500]}")
+    return data
 
 
-async def _run_scene(session, scene, manifest):
-    scene_id = scene["id"]
-    print(f"\n--- SAHNE {scene_id} İŞLENİYOR ---")
+async def _call(session, name, args):
+    return _parse_result(await session.call_tool(name, arguments=args), name)
 
+
+async def _preview(session, comp_id, frame_path, seconds):
+    try:
+        result = await _call(session, "preview_frame", {
+            "comp_id": int(comp_id), "time": min(max(0.1, seconds), 2.0), "size": 1152,
+        })
+        source = result.get("path")
+        if source and os.path.isfile(source):
+            shutil.copy2(source, frame_path)
+            print(f"  [ÖNİZLEME] {frame_path}")
+            return True
+        print("  [UYARI] preview_frame dosya yolu döndürmedi.")
+    except Exception as exc:
+        print(f"  [UYARI] Önizleme alınamadı: {exc}")
+    return False
+
+
+async def _optional_qa(frame_path, scene):
+    if not QA_ENABLED:
+        print("  [QA] Claude kontrolü kapalı (varsayılan); API harcaması yapılmadı.")
+        return None
+    try:
+        from ai_engine.claude_vision import analyze_scene_image
+        result = await asyncio.to_thread(
+            analyze_scene_image, frame_path, scene.get("visual_description", "")
+        )
+        state = "ONAY" if result.get("success") else "İYİLEŞTİRME ÖNERİSİ"
+        print(f"  [CLAUDE] {state}: {result.get('reason', 'Açıklama yok')}")
+        return result
+    except Exception as exc:
+        print(f"  [UYARI] Claude QA atlandı: {exc}")
+        return None
+
+
+async def _render(session, comp_id, output_path):
+    # Save As is mandatory: render_start's prepare_render requires a saved AEP.
+    save = await _call(session, "save_project", {
+        "path": os.path.abspath(output_path.replace(".mp4", ".aep")),
+        "overwrite": True,
+    })
+    saved_path = save.get("project_path") or save.get("path")
+    print(f"  [KAYIT] Proje kaydedildi: {saved_path or 'After Effects proje kaydı tamamlandı'}")
+
+    render_args = {
+        "comp_id": int(comp_id),
+        "output_path": output_path,
+        "overwrite": True,
+        "draft": RENDER_DRAFT,
+        "verify": True,
+    }
+    if RENDER_DELIVER:
+        render_args["deliver"] = True
+
+    started = await _call(session, "render_start", render_args)
+    job_id = started.get("job_id")
+    if not job_id:
+        raise RuntimeError(f"render_start job_id döndürmedi: {started}")
+    print(f"  [RENDER] İş başladı: {job_id}")
+
+    timeout = max(60, int(os.getenv("AE_RENDER_TIMEOUT_SECONDS", DEFAULT_RENDER_TIMEOUT)))
+    deadline = time.monotonic() + timeout
+    last_phase = None
+    while time.monotonic() < deadline:
+        status = await _call(session, "render_status", {"job_id": job_id})
+        state = status.get("state")
+        phase = status.get("phase") or state
+        percent = status.get("percent", 0)
+        if phase != last_phase or state != "running":
+            print(f"  [RENDER] {phase}: %{percent}")
+            last_phase = phase
+        if state == "done":
+            actual = status.get("output_path") or output_path
+            if not os.path.isfile(actual) or os.path.getsize(actual) == 0:
+                raise RuntimeError(
+                    f"Render tamamlandı bildirildi fakat çıktı bulunamadı: {actual}"
+                )
+            print(f"  [BAŞARILI] Render: {actual} ({os.path.getsize(actual):,} bytes)")
+            if status.get("check", {}).get("issues"):
+                print(f"  [RENDER QA] {status['check']['issues']}")
+            return actual
+        if state in {"failed", "canceled"}:
+            raise RuntimeError(
+                f"Render {state}: errors={status.get('errors')} "
+                f"log={status.get('log_tail')} hint={status.get('hint')}"
+            )
+        await asyncio.sleep(min(15, max(2, int(status.get("poll_after_s", 5)))))
+    raise TimeoutError(
+        f"Render {timeout} saniyede tamamlanmadı. İş kimliği {job_id}; "
+        "After Effects/aerender hâlâ çalışıyor olabilir. Aynı sahneyi tekrar başlatmayın."
+    )
+
+
+async def _run_scene(session, scene):
+    scene_id = int(scene["id"])
+    print(f"\\n--- SAHNE {scene_id} / {scene.get('on_screen_text', '')} ---")
     os.makedirs(PROJECTS_DIR, exist_ok=True)
     os.makedirs(EXPORTS_DIR, exist_ok=True)
+    frame_path = os.path.join(EXPORTS_DIR, f"test_scene_{scene_id}.png")
+    output_path = os.path.join(EXPORTS_DIR, f"scene_{scene_id:02d}.mp4")
 
-    scene_aep_path = os.path.join(PROJECTS_DIR, f"scene_{scene_id}.aep")
-    video_output_path = os.path.join(EXPORTS_DIR, f"scene_{int(scene_id):02d}.mp4")
-    frame_path = os.path.join(EXPORTS_DIR, f"test_scene_{scene_id}.jpg")
+    builder = HudBuilder(session, scene)
+    comp_id = await builder.build()
+    print(f"  [TASARIM] {builder.count} düzenlenebilir AE katmanı oluşturuldu.")
 
-    image_path = next(
-        (
-            item.get("local_path", "")
-            for item in manifest
-            if str(item.get("scene_id")) == str(scene_id)
-        ),
-        "",
+    # Preview and QA never gate the render. Save first so the project is recoverable.
+    await _call(session, "save_project", {
+        "path": os.path.abspath(os.path.join(PROJECTS_DIR, f"scene_{scene_id}.aep")),
+        "overwrite": True,
+    })
+    preview_ok = await _preview(
+        session, comp_id, frame_path, float(scene.get("duration_seconds", 6)) * 0.35
     )
-    image_available = bool(image_path and os.path.isfile(image_path))
-
-    if image_available:
-        scene["local_image_path"] = image_path
-        scene["visual_assets_available"] = True
-        scene["asset_mode"] = "image_plus_generated_hud"
-        print(f"  [GÖRSEL] Kullanılacak: {image_path}")
+    if preview_ok:
+        await _optional_qa(frame_path, scene)
     else:
-        scene["local_image_path"] = ""
-        scene["visual_assets_available"] = False
-        scene["asset_mode"] = "generated_hud_only"
-        scene["image_fallback_instruction"] = (
-            "No external image is available. Do not import footage or create "
-            "footage layers. Build the entire scene using native After Effects "
-            "shape, text, solid and animation layers. Use a polished HUD/FUI "
-            "visual language: restrained grid, technical frames, data panels, "
-            "radar/scanner elements, network nodes, connecting lines and "
-            "coherent cyan/red accents where appropriate. Avoid generic "
-            "placeholder circles and rectangles; compose purposeful interface "
-            "elements with hierarchy and motion."
-        )
-        print(
-            "  [GÖRSEL YOK] Sahne görsel olmadan üretilecek; "
-            "HUD/FUI öğeleri AE katmanlarıyla oluşturulacak."
-        )
+        print("  [QA] Önizleme yok; kalite kontrolü atlandı, render yine alınacak.")
 
-    feedback = None
-    success = False
-    qa_rejected = False
-    forced_comp_name = f"Scene_{scene_id}"
-    last_comp_id = None
-
-    for attempt in range(MAX_RETRIES):
-        print(
-            f"  [Deneme {attempt + 1}/{MAX_RETRIES}] "
-            "DeepSeek MCP komutları üretiyor..."
-        )
-
-        commands = generate_mcp_commands(scene, feedback)
-        if not commands:
-            feedback = (
-                "The previous response was empty, truncated or invalid JSON. "
-                "Return a shorter complete JSON array with at most 30 layers, "
-                "6 keyframe calls and 2 effect calls. Do not truncate the array."
-            )
-            print("  [HATA] DeepSeek komut üretmedi; kısa JSON ile yeniden denenecek.")
-            continue
-
-        comp_id = None
-        footage_id = None
-        layer_map = {}
-        last_layer_id = None
-        command_failed = False
-
-        for command in commands:
-            tool_name, args = _prepare_command(
-                command=command,
-                comp_id=comp_id,
-                layer_map=layer_map,
-                last_layer_id=last_layer_id,
-                footage_id=footage_id,
-                image_available=image_available,
-                forced_comp_name=forced_comp_name,
-            )
-
-            if not tool_name:
-                continue
-
-            try:
-                print(f"    -> Çalıştırılıyor: {tool_name}")
-                result = await session.call_tool(tool_name, arguments=args)
-                raw_text = _read_tool_text(result)
-                print(f"       [DEBUG] {tool_name}: {raw_text[:160]}")
-
-                # JSON yanıtlarında error alanını kontrol et; sıradan metindeki
-                # "error" kelimesi tek başına başarısızlık sayılmasın.
-                tool_error = False
-                try:
-                    parsed = json.loads(raw_text)
-                    tool_error = isinstance(parsed, dict) and bool(parsed.get("error"))
-                except json.JSONDecodeError:
-                    tool_error = raw_text.lstrip().lower().startswith("error:")
-
-                if tool_error:
-                    feedback = f"{tool_name} başarısız oldu: {raw_text}"
-                    print(f"       [HATA] {feedback}")
-                    command_failed = True
-                    break
-
-                if tool_name == "create_comp":
-                    comp_id = _extract_id(raw_text)
-                    if comp_id is not None:
-                        last_comp_id = comp_id
-
-                elif tool_name == "import_footage":
-                    footage_id = _extract_id(raw_text)
-
-                elif tool_name == "add_layer":
-                    new_layer_id = _extract_id(raw_text)
-                    if new_layer_id is not None:
-                        last_layer_id = new_layer_id
-                        layer_name = (
-                            args.get("options", {}).get("name", "Unknown")
-                        )
-                        layer_map[layer_name] = new_layer_id
-
-            except Exception as error:
-                feedback = f"MCP Tool Error ({tool_name}): {error}"
-                print(f"  [HATA] {feedback}")
-                command_failed = True
-                break
-
-        if command_failed:
-            continue
-
-        if comp_id is None:
-            feedback = "Komut listesi geçerli bir kompozisyon oluşturmadı."
-            print(f"  [HATA] {feedback}")
-            continue
-
-        last_comp_id = comp_id
-
-        # Önizleme karesi al.
-        print("  MCP: Ekran görüntüsü alınıyor...")
-        preview_available = False
-
-        try:
-            preview_result = await session.call_tool(
-                "preview_frame",
-                arguments={
-                    "comp_id": int(comp_id),
-                    "time": PREVIEW_TIME_SECONDS,
-                },
-            )
-            preview_json = json.loads(_read_tool_text(preview_result))
-            preview_source = preview_json.get("path")
-
-            if preview_source and os.path.isfile(preview_source):
-                shutil.copy2(preview_source, frame_path)
-                preview_available = os.path.isfile(frame_path)
-        except Exception as error:
-            print(f"  [UYARI] Önizleme alınamadı: {error}")
-
-        # Claude Vision, önizleme mevcutsa çalışır. Görselin bulunmaması
-        # Claude kontrolünü atlamak için tek başına gerekçe değildir.
-        if preview_available:
-            print("  Claude: Sahne analiz ediliyor...")
-            try:
-                analysis = analyze_scene_image(
-                    frame_path,
-                    scene.get("visual_description", ""),
-                )
-
-                if analysis.get("success"):
-                    qa_rejected = False
-                    print(
-                        f"  [BAŞARILI] Claude onayladı: "
-                        f"{analysis.get('reason', 'Görsel uygun.')}"
-                    )
-                    success = True
-                    break
-
-                reason = analysis.get("reason", "Tasarım iyileştirilmeli.")
-                print(f"  [REDDEDİLDİ] Claude: {reason}")
-                qa_rejected = True
-                feedback = (
-                    "Revise the scene based on this visual review: "
-                    f"{reason}. Preserve the requested HUD/FUI style, "
-                    "visual hierarchy, readable typography and purposeful "
-                    "motion. Do not impose a black background unless the "
-                    "scene design specifically calls for it."
-                )
-            except Exception as error:
-                print(f"  [UYARI] Claude Vision analizi başarısız: {error}")
-                # Görsel analiz servisinin hatası sahnenin üretimini engellemesin.
-                success = True
-                break
-        else:
-            print(
-                "  [UYARI] Önizleme alınamadı; Claude Vision kontrolü "
-                "bu denemede atlandı."
-            )
-            # Kompozisyon oluşturulduysa render alabilmek için devam et.
-            success = True
-            break
-
-    # QA is advisory in test mode: always render the latest composition for inspection.
-    if last_comp_id is not None:
-        status = "ONAYLANDI" if success else ("REDDEDİLDİ — TEST RENDERİ ALINACAK" if qa_rejected else "KONTROL EDİLEMEDİ — TEST RENDERİ ALINACAK")
-        print(f"\n  MCP RENDER: Sahne {scene_id} durumu [{status}]")
-
-        if os.path.exists(video_output_path):
-            os.remove(video_output_path)
-
-        try:
-            await session.call_tool(
-                "save_project",
-                arguments={"path": scene_aep_path},
-            )
-            print(f"       [BİLGİ] Proje kaydedildi: {scene_aep_path}")
-        except Exception as error:
-            print(f"       [UYARI] Proje kaydedilemedi: {error}")
-
-        await asyncio.sleep(2)
-
-        try:
-            print("       [BİLGİ] MCP render_start çağrılıyor...")
-            render_result = await session.call_tool(
-                "render_start",
-                arguments={
-                    "comp_id": int(last_comp_id),
-                    "output_path": video_output_path,
-                },
-            )
-            render_text = _read_tool_text(render_result)
-            print(f"       [DEBUG] render_start: {render_text[:200]}")
-        except Exception as error:
-            # MCP may time out after 30s while AE continues preparing/rendering.
-            render_text = str(error)
-            print(f"       [UYARI] render_start yanıtı alınamadı: {error}")
-            print("       [BİLGİ] AE arka planda çalışıyor olabilir; çıktı bekleniyor...")
-
-        max_wait = int(os.environ.get("AE_RENDER_TIMEOUT_SECONDS", "300"))
-        waited = 0
-        stable_size = 0
-        previous_size = -1
-        while waited < max_wait:
-            if os.path.isfile(video_output_path):
-                current_size = os.path.getsize(video_output_path)
-                if current_size > 0 and current_size == previous_size:
-                    stable_size += 1
-                else:
-                    stable_size = 0
-                previous_size = current_size
-                if current_size > 0 and stable_size >= 3:
-                    print(f"       [BAŞARILI] Video oluşturuldu: {video_output_path}")
-                    return True
-            await asyncio.sleep(2)
-            waited += 2
-            if waited % 10 == 0:
-                print(f"       [BEKLENİYOR] {waited} saniye geçti...")
-
-        print(
-            f"       [HATA] {max_wait} saniyede tamamlanmadı. "
-            "After Effects hâlâ meşgul olabilir; sonraki sahneler durduruluyor."
-        )
-        return False
-    else:
-        print(f"  [!] Sahne {scene_id} için kompozisyon oluşturulamadı.")
+    # render_start internally saves/prepares the current project. Explicit save above
+    # guarantees a named .aep exists before that call.
+    await _render(session, comp_id, output_path)
     return True
 
 
 async def run_ai_director():
-    print("=== AI YÖNETMEN DÖNGÜSÜ BAŞLIYOR ===")
-
+    print("=== AE HUD/FUI DIRECTOR ===")
+    print("Mod: deterministik yerel tasarım + isteğe bağlı Claude QA")
     if not os.path.isfile(PLAN_PATH):
-        print(f"[HATA] Sahne planı bulunamadı: {PLAN_PATH}")
-        return
-
+        raise FileNotFoundError(f"Sahne planı bulunamadı: {PLAN_PATH}")
     with open(PLAN_PATH, "r", encoding="utf-8") as file:
         plan = json.load(file)
-
     scenes = plan.get("scenes", [])
     if not scenes:
-        print("[HATA] Plan dosyasında sahne bulunamadı.")
-        return
-
-    manifest_path = os.path.normpath(
-        os.path.join(PROJECTS_DIR, "..", "Plans", "image_manifest.json")
-    )
-    manifest = []
-
-    if os.path.isfile(manifest_path):
-        try:
-            with open(manifest_path, "r", encoding="utf-8") as file:
-                manifest = json.load(file)
-        except (json.JSONDecodeError, OSError) as error:
-            print(f"[UYARI] Görsel manifest'i okunamadı: {error}")
-            manifest = []
-    else:
-        print("[BİLGİ] Görsel manifest'i yok; tüm sahneler HUD-only üretilecek.")
-
+        raise ValueError("scene_plan.json içinde sahne bulunamadı.")
     if not os.path.isfile(SERVER_SCRIPT):
-        print(f"[HATA] AE MCP sunucu dosyası bulunamadı: {SERVER_SCRIPT}")
-        print(
-            "AE_MCP_SERVER_SCRIPT ortam değişkeniyle doğru index.js yolunu "
-            "tanımlayabilirsin."
+        raise FileNotFoundError(
+            f"AE MCP sunucusu bulunamadı: {SERVER_SCRIPT}. "
+            "AE_MCP_SERVER_SCRIPT ortam değişkenini kontrol edin."
         )
-        return
 
-    server_params = StdioServerParameters(
+    params = StdioServerParameters(
         command="node",
         args=[SERVER_SCRIPT],
         env={**os.environ, "AE_MCP_ALLOW_JSX": "1"},
     )
-
-    async with stdio_client(server_params) as (read, write):
+    async with stdio_client(params) as (read, write):
         async with ClientSession(read, write) as session:
             await session.initialize()
-            print("MCP Bağlantısı Kuruldu.\n")
-
+            print("[MCP] Bağlantı kuruldu.")
             for scene in scenes:
-                can_continue = await _run_scene(session, scene, manifest)
-                if can_continue is False:
-                    print("[DURDURULDU] AE render tamamlanmadığı için yeni sahne gönderilmiyor.")
+                try:
+                    await _run_scene(session, scene)
+                except Exception as exc:
+                    print(f"  [SAHNE HATASI] Sahne {scene.get('id')}: {exc}")
+                    print("  [DURDURULDU] AE durumunu kontrol etmeden sonraki sahne gönderilmiyor.")
                     break
+    print("\\n=== YÖNETMEN DÖNGÜSÜ TAMAMLANDI ===")
 
 
 if __name__ == "__main__":
-    asyncio.run(run_ai_director())
+    try:
+        asyncio.run(run_ai_director())
+    except KeyboardInterrupt:
+        print("\\n[İPTAL] Kullanıcı işlemi durdurdu.")
+    except Exception as exc:
+        print(f"\\n[FATAL] {exc}")
+        raise
