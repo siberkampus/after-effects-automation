@@ -51,8 +51,8 @@ Return only JSON: {{"success": true/false, "reason": "one concise sentence"}}.
             block.text for block in response.content
             if getattr(block, "type", "") == "text"
         ).strip()
-        result_text = re.sub(r"^\`\`\`(?:json)?\\s*", "", result_text)
-        result_text = re.sub(r"\\s*\`\`\`$", "", result_text)
+        result_text = re.sub(r"^\\x60\\x60\\x60(?:json)?\\s*", "", result_text)
+        result_text = re.sub(r"\\s*\\x60\\x60\\x60$", "", result_text)
         try:
             data = json.loads(result_text)
         except json.JSONDecodeError:
