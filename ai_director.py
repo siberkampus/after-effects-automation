@@ -84,12 +84,9 @@ def _prepare_keyframes_args(args, layer_map, last_layer_id):
     new_args = {}
     layer_name = args.get("layer") or args.get("layer_name")
 
-    if layer_name and layer_name in layer_map:
-        new_args["layer_id"] = int(layer_map[layer_name])
-    elif last_layer_id is not None:
-        new_args["layer_id"] = int(last_layer_id)
-    else:
+    if not layer_name or layer_name not in layer_map:
         return None
+    new_args["layer_id"] = int(layer_map[layer_name])
 
     path = args.get("property") or args.get("path")
     new_args["path"] = path
@@ -140,6 +137,8 @@ def _prepare_command(
 
     if tool_name == "create_comp":
         args["name"] = forced_comp_name
+        if "bg_color" in args:
+            args["bg_color"] = _normalize_color(args["bg_color"])
         return tool_name, args
 
     # Görsel yoksa dosya içe aktarma komutlarını çalıştırma.
@@ -183,8 +182,6 @@ def _prepare_command(
             layer_id = int(layer_map[args["layer"]])
         elif args.get("layer_name") in layer_map:
             layer_id = int(layer_map[args["layer_name"]])
-        elif last_layer_id is not None:
-            layer_id = int(last_layer_id)
         else:
             return None, None
 
@@ -254,6 +251,7 @@ async def _run_scene(session, scene, manifest):
 
     feedback = None
     success = False
+    qa_rejected = False
     forced_comp_name = f"Scene_{scene_id}"
     last_comp_id = None
 
@@ -265,8 +263,13 @@ async def _run_scene(session, scene, manifest):
 
         commands = generate_mcp_commands(scene, feedback)
         if not commands:
-            print("  [HATA] DeepSeek komut üretmedi.")
-            break
+            feedback = (
+                "The previous response was empty, truncated or invalid JSON. "
+                "Return a shorter complete JSON array with at most 30 layers, "
+                "6 keyframe calls and 2 effect calls. Do not truncate the array."
+            )
+            print("  [HATA] DeepSeek komut üretmedi; kısa JSON ile yeniden denenecek.")
+            continue
 
         comp_id = None
         footage_id = None
@@ -374,6 +377,7 @@ async def _run_scene(session, scene, manifest):
                 )
 
                 if analysis.get("success"):
+                    qa_rejected = False
                     print(
                         f"  [BAŞARILI] Claude onayladı: "
                         f"{analysis.get('reason', 'Görsel uygun.')}"
@@ -383,6 +387,7 @@ async def _run_scene(session, scene, manifest):
 
                 reason = analysis.get("reason", "Tasarım iyileştirilmeli.")
                 print(f"  [REDDEDİLDİ] Claude: {reason}")
+                qa_rejected = True
                 feedback = (
                     "Revise the scene based on this visual review: "
                     f"{reason}. Preserve the requested HUD/FUI style, "
@@ -404,11 +409,10 @@ async def _run_scene(session, scene, manifest):
             success = True
             break
 
-    # Claude reddetse bile mevcut davranışı koruyarak oluşturulmuş
-    # kompozisyonu kaydet ve render etmeyi dene.
+    # Save for inspection, but never render a scene explicitly rejected by QA.
     if last_comp_id is not None:
-        status = "ONAYLANDI" if success else "KONTROL TAMAMLANAMADI"
-        print(f"\n  MCP RENDER: Sahne {scene_id} render alınıyor [{status}]")
+        status = "ONAYLANDI" if success else ("REDDEDİLDİ" if qa_rejected else "KONTROL EDİLEMEDİ")
+        print(f"\n  MCP: Sahne {scene_id} durumu [{status}]")
 
         if os.path.exists(video_output_path):
             os.remove(video_output_path)
@@ -421,6 +425,10 @@ async def _run_scene(session, scene, manifest):
             print(f"       [BİLGİ] Proje kaydedildi: {scene_aep_path}")
         except Exception as error:
             print(f"       [UYARI] Proje kaydedilemedi: {error}")
+
+        if qa_rejected and not success:
+            print("       [ATLANDI] Claude Vision sahneyi reddetti; hatalı render üretilmeyecek.")
+            return
 
         await asyncio.sleep(2)
 
@@ -436,9 +444,12 @@ async def _run_scene(session, scene, manifest):
             render_text = _read_tool_text(render_result)
             print(f"       [DEBUG] render_start: {render_text[:200]}")
 
-            max_wait = 120
+            max_wait = int(os.environ.get("AE_RENDER_TIMEOUT_SECONDS", "300"))
             waited = 0
-            while not os.path.exists(video_output_path) and waited < max_wait:
+            while (
+                not os.path.isfile(video_output_path)
+                or os.path.getsize(video_output_path) == 0
+            ) and waited < max_wait:
                 await asyncio.sleep(2)
                 waited += 2
                 if waited % 10 == 0:
