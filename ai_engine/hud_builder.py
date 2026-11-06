@@ -89,7 +89,7 @@ class HudBuilder:
 
     async def _shape(self, name: str, typ: str, pos, size=None, *,
                      fill=None, stroke=CYAN, sw=2, opacity=100,
-                     vertices=None, dashes=None, rotation=0):
+                     vertices=None, dashes=None, rotation=0, shape_offset=None):
         shape = {"type": typ, "stroke_width": sw}
         if stroke is not None:
             shape["stroke"] = stroke
@@ -106,6 +106,8 @@ class HudBuilder:
             shape["dashes"] = dashes
         if rotation:
             shape["rotation"] = rotation
+        if shape_offset is not None:
+            shape["position"] = [float(shape_offset[0]), float(shape_offset[1])]
         opts = {"name": name, "position": [float(pos[0]), float(pos[1])],
                 "shape": shape}
         out = await self.call("add_layer", {
@@ -172,8 +174,9 @@ class HudBuilder:
                               opacity=34 if i else 52, dashes=[18, 9] if i == 0 else None)
             if i == 0:
                 await self._animate(nm, "rotation", [(0, 0), (self.duration, 360)])
-        await self._shape("RadarSweep", "rect", (cx + 120, cy - 2), (245, 2),
-                          fill=CYAN, stroke=None, sw=0.1, opacity=72)
+        await self._shape("RadarSweep", "rect", (cx, cy), (245, 2),
+                          fill=CYAN, stroke=None, sw=0.1, opacity=72,
+                          shape_offset=(120, 0))
         await self._animate("RadarSweep", "rotation", [(0, -35), (self.duration, 325)])
         await self._shape("RadarHub", "ellipse", (cx, cy), (14, 14),
                           fill=CYAN, stroke=CYAN, sw=1, opacity=95)
