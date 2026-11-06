@@ -11,6 +11,10 @@ def generate_mcp_commands(scene_data, feedback=None):
     SCENE ID: {scene_data.get('id', '1')}
     TITLE: {scene_data.get('on_screen_text', '')}
     VISUAL DESCRIPTION: {scene_data.get('visual_description', '')}
+    HUD COMPONENTS: {json.dumps(scene_data.get('hud_components', []))}
+    HUD ANIMATION: {scene_data.get('hud_animation', '')}
+    HUD LAYOUT: {scene_data.get('layout', '')}
+    COLOR PALETTE: {json.dumps(scene_data.get('color_palette', {}))}
     DURATION: {scene_data.get('duration_seconds', 5)} seconds
     IMAGE PATH: "{scene_data.get('local_image_path', '')}"
     
