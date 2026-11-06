@@ -51,12 +51,12 @@ Return only JSON: {{"success": true/false, "reason": "one concise sentence"}}.
             block.text for block in response.content
             if getattr(block, "type", "") == "text"
         ).strip()
-        result_text = re.sub(r"^\\x60\\x60\\x60(?:json)?\\s*", "", result_text)
-        result_text = re.sub(r"\\s*\\x60\\x60\\x60$", "", result_text)
+        result_text = re.sub(r"^\x60\x60\x60(?:json)?\s*", "", result_text)
+        result_text = re.sub(r"\s*\x60\x60\x60$", "", result_text)
         try:
             data = json.loads(result_text)
         except json.JSONDecodeError:
-            match = re.search(r"\\{.*\\}", result_text, re.DOTALL)
+            match = re.search(r"\{.*\}", result_text, re.DOTALL)
             if not match:
                 return {"success": False, "reason": "Claude geçersiz JSON döndürdü."}
             data = json.loads(match.group(0))
