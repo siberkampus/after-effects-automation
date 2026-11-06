@@ -17,6 +17,21 @@ def generate_mcp_commands(scene_data, feedback=None):
     COLOR PALETTE: {json.dumps(scene_data.get('color_palette', {}))}
     DURATION: {scene_data.get('duration_seconds', 5)} seconds
     IMAGE PATH: "{scene_data.get('local_image_path', '')}"
+    HUD/FUI DESIGN REQUIREMENTS (when HUD COMPONENTS is non-empty):
+    - Treat this as a premium sci-fi interface shot, not generic cyber illustration.
+    - Build separate editable native shape/text layers; target 28-42 purposeful layers.
+    - Use deep navy, subtle grid, thin cyan/blue strokes, asymmetric technical frames,
+      corner brackets, radial ticks, compact data panels and deliberate negative space.
+    - Radar: 3+ concentric outline ellipses, separated ring segments, 12-20 radial ticks,
+      center hub, crosshair and a rotating sweep element.
+    - Target lock: four independent L-shaped brackets, center reticle and tracking markers;
+      animate brackets converging before settling.
+    - Data panels: fine outline borders, header dividers, short labels and micro-bars.
+    - Animate at least 4 distinct elements with set_keyframes within scene duration.
+    - Use Opacity, Scale or Position only; reference exact existing layer names.
+    - Apply glow sparingly to 2-4 hero elements. Never import UI screenshots in HUD mode.
+    - Avoid oversized filled circles, random rectangles, invented metrics and unreadable text.
+    - Use 1920x1080 coordinates with 70px safe margins.
     
     AVAILABLE TOOLS (Use these EXACT schemas):
     
