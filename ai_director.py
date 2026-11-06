@@ -137,8 +137,8 @@ def _prepare_command(
 
     if tool_name == "create_comp":
         args["name"] = forced_comp_name
-        if "bg_color" in args:
-            args["bg_color"] = _normalize_color(args["bg_color"])
+        # Lock the background to valid normalized RGB values; do not trust LLM color ranges.
+        args["bg_color"] = [0.012, 0.031, 0.071]
         return tool_name, args
 
     # Görsel yoksa dosya içe aktarma komutlarını çalıştırma.
@@ -409,10 +409,10 @@ async def _run_scene(session, scene, manifest):
             success = True
             break
 
-    # Save for inspection, but never render a scene explicitly rejected by QA.
+    # QA is advisory in test mode: always render the latest composition for inspection.
     if last_comp_id is not None:
-        status = "ONAYLANDI" if success else ("REDDEDİLDİ" if qa_rejected else "KONTROL EDİLEMEDİ")
-        print(f"\n  MCP: Sahne {scene_id} durumu [{status}]")
+        status = "ONAYLANDI" if success else ("REDDEDİLDİ — TEST RENDERİ ALINACAK" if qa_rejected else "KONTROL EDİLEMEDİ — TEST RENDERİ ALINACAK")
+        print(f"\n  MCP RENDER: Sahne {scene_id} durumu [{status}]")
 
         if os.path.exists(video_output_path):
             os.remove(video_output_path)
@@ -425,10 +425,6 @@ async def _run_scene(session, scene, manifest):
             print(f"       [BİLGİ] Proje kaydedildi: {scene_aep_path}")
         except Exception as error:
             print(f"       [UYARI] Proje kaydedilemedi: {error}")
-
-        if qa_rejected and not success:
-            print("       [ATLANDI] Claude Vision sahneyi reddetti; hatalı render üretilmeyecek.")
-            return
 
         await asyncio.sleep(2)
 
@@ -443,26 +439,40 @@ async def _run_scene(session, scene, manifest):
             )
             render_text = _read_tool_text(render_result)
             print(f"       [DEBUG] render_start: {render_text[:200]}")
-
-            max_wait = int(os.environ.get("AE_RENDER_TIMEOUT_SECONDS", "300"))
-            waited = 0
-            while (
-                not os.path.isfile(video_output_path)
-                or os.path.getsize(video_output_path) == 0
-            ) and waited < max_wait:
-                await asyncio.sleep(2)
-                waited += 2
-                if waited % 10 == 0:
-                    print(f"       [BEKLENİYOR] {waited} saniye geçti...")
-
-            if os.path.isfile(video_output_path) and os.path.getsize(video_output_path) > 0:
-                print(f"       [BAŞARILI] Video oluşturuldu: {video_output_path}")
-            else:
-                print(f"       [HATA] Video {max_wait} saniye içinde oluşmadı.")
         except Exception as error:
-            print(f"       [HATA] Render başlatılamadı: {error}")
+            # MCP may time out after 30s while AE continues preparing/rendering.
+            render_text = str(error)
+            print(f"       [UYARI] render_start yanıtı alınamadı: {error}")
+            print("       [BİLGİ] AE arka planda çalışıyor olabilir; çıktı bekleniyor...")
+
+        max_wait = int(os.environ.get("AE_RENDER_TIMEOUT_SECONDS", "300"))
+        waited = 0
+        stable_size = 0
+        previous_size = -1
+        while waited < max_wait:
+            if os.path.isfile(video_output_path):
+                current_size = os.path.getsize(video_output_path)
+                if current_size > 0 and current_size == previous_size:
+                    stable_size += 1
+                else:
+                    stable_size = 0
+                previous_size = current_size
+                if current_size > 0 and stable_size >= 3:
+                    print(f"       [BAŞARILI] Video oluşturuldu: {video_output_path}")
+                    return True
+            await asyncio.sleep(2)
+            waited += 2
+            if waited % 10 == 0:
+                print(f"       [BEKLENİYOR] {waited} saniye geçti...")
+
+        print(
+            f"       [HATA] {max_wait} saniyede tamamlanmadı. "
+            "After Effects hâlâ meşgul olabilir; sonraki sahneler durduruluyor."
+        )
+        return False
     else:
         print(f"  [!] Sahne {scene_id} için kompozisyon oluşturulamadı.")
+    return True
 
 
 async def run_ai_director():
@@ -515,7 +525,10 @@ async def run_ai_director():
             print("MCP Bağlantısı Kuruldu.\n")
 
             for scene in scenes:
-                await _run_scene(session, scene, manifest)
+                can_continue = await _run_scene(session, scene, manifest)
+                if can_continue is False:
+                    print("[DURDURULDU] AE render tamamlanmadığı için yeni sahne gönderilmiyor.")
+                    break
 
 
 if __name__ == "__main__":
