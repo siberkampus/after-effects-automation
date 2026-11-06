@@ -16,7 +16,7 @@ client = OpenAI(
     base_url="https://api.deepseek.com"
 )
 
-def ask_deepseek(prompt, system_prompt=None, temperature=0.2):
+def ask_deepseek(prompt, system_prompt=None, temperature=0.2, max_tokens=None):
     if system_prompt is None:
         system_prompt = """
         You are an expert documentary production AI.
@@ -24,13 +24,17 @@ def ask_deepseek(prompt, system_prompt=None, temperature=0.2):
         Always produce accurate and structured results. Never invent historical facts.
         """
 
-    response = client.chat.completions.create(
-        model="deepseek-chat",
-        messages=[
+    request = {
+        "model": "deepseek-chat",
+        "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt}
         ],
-        temperature=temperature
-    )
+        "temperature": temperature,
+    }
+    if max_tokens is not None:
+        request["max_tokens"] = int(max_tokens)
+
+    response = client.chat.completions.create(**request)
 
     return response.choices[0].message.content
