@@ -130,8 +130,9 @@ async def _render(session, comp_id, output_path):
                     f"Render tamamlandı bildirildi fakat çıktı bulunamadı: {actual}"
                 )
             print(f"  [BAŞARILI] Render: {actual} ({os.path.getsize(actual):,} bytes)")
-            if status.get("check", {}).get("issues"):
-                print(f"  [RENDER QA] {status['check']['issues']}")
+            check = status.get("check") or {}
+            if check.get("issues"):
+                print(f"  [RENDER QA] {check['issues']}")
             return actual
         if state in {"failed", "canceled"}:
             raise RuntimeError(
