@@ -90,8 +90,9 @@ class HudBuilder:
     async def _shape(self, name: str, typ: str, pos, size=None, *,
                      fill=None, stroke=CYAN, sw=2, opacity=100,
                      vertices=None, dashes=None, rotation=0):
-        shape = {"type": typ, "stroke": stroke, "stroke_width": sw,
-                 "stroke_opacity": opacity}
+        shape = {"type": typ, "stroke_width": sw, "stroke_opacity": opacity}
+        if stroke is not None:
+            shape["stroke"] = stroke
         if fill is not None:
             shape["fill"] = fill
         if size is not None:
