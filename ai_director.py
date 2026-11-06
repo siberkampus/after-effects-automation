@@ -94,14 +94,8 @@ async def _optional_qa(frame_path, scene):
 
 
 async def _render(session, comp_id, output_path):
-    # Save As is mandatory: render_start's prepare_render requires a saved AEP.
-    save = await _call(session, "save_project", {
-        "path": os.path.abspath(output_path.replace(".mp4", ".aep")),
-        "overwrite": True,
-    })
-    saved_path = save.get("project_path") or save.get("path")
-    print(f"  [KAYIT] Proje kaydedildi: {saved_path or 'After Effects proje kaydı tamamlandı'}")
-
+    # The caller already saved the AEP to Projects/scene_N.aep.
+    # ae-motion's render_start now starts an asynchronous aerender job.
     render_args = {
         "comp_id": int(comp_id),
         "output_path": output_path,
