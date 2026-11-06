@@ -171,10 +171,10 @@ class HudBuilder:
                               stroke=CYAN if i < 2 else BLUE, sw=2 if i < 2 else 1.5,
                               opacity=34 if i else 52, dashes=[18, 9] if i == 0 else None)
             if i == 0:
-                await self._animate(nm, "Rotation", [(0, 0), (self.duration, 360)])
+                await self._animate(nm, "rotation", [(0, 0), (self.duration, 360)])
         await self._shape("RadarSweep", "rect", (cx + 120, cy - 2), (245, 2),
                           fill=CYAN, stroke=None, sw=0.1, opacity=72)
-        await self._animate("RadarSweep", "Rotation", [(0, -35), (self.duration, 325)])
+        await self._animate("RadarSweep", "rotation", [(0, -35), (self.duration, 325)])
         await self._shape("RadarHub", "ellipse", (cx, cy), (14, 14),
                           fill=CYAN, stroke=CYAN, sw=1, opacity=95)
         for i, (dx, dy) in enumerate([(0,-300),(300,0),(0,300),(-300,0)]):
@@ -230,7 +230,7 @@ class HudBuilder:
             nm=f"ShieldRing{i}"
             await self._shape(nm,"ellipse",(cx,cy),(d,d),stroke=CYAN if i!=1 else BLUE,
                               sw=2,opacity=42 if i else 65,dashes=[20,10] if i==1 else None)
-            await self._animate(nm,"Rotation",[(0,0),(self.duration,360 if i%2==0 else -360)])
+            await self._animate(nm,"rotation",[(0,0),(self.duration,360 if i%2==0 else -360)])
         # Geometric shield core: six-sided outline, not a generic filled icon.
         hexv=[(0,-190),(155,-100),(155,90),(0,190),(-155,90),(-155,-100)]
         await self._shape("ShieldOutline","polygon",(cx,cy),stroke=CYAN,sw=4,opacity=95,vertices=hexv)
