@@ -148,7 +148,7 @@ async def _render(session, comp_id, output_path):
 
 async def _run_scene(session, scene):
     scene_id = int(scene["id"])
-    print(f"\\n--- SAHNE {scene_id} / {scene.get('on_screen_text', '')} ---")
+    print(f"\n--- SAHNE {scene_id} / {scene.get('on_screen_text', '')} ---")
     os.makedirs(PROJECTS_DIR, exist_ok=True)
     os.makedirs(EXPORTS_DIR, exist_ok=True)
     frame_path = os.path.join(EXPORTS_DIR, f"test_scene_{scene_id}.png")
