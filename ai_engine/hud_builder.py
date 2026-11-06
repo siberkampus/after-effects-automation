@@ -131,6 +131,17 @@ class HudBuilder:
             "keys": [{"t": float(t), "v": v, "interp": "linear"} for t, v in keys],
         })
 
+    async def _glow(self, name):
+        layer_id = self.layers.get(name)
+        if not layer_id:
+            return
+        try:
+            await self.call("apply_effect", {
+                "layer_id": layer_id, "match_name": "ADBE Glo2",
+            })
+        except HudBuildError as exc:
+            print(f"[HUD] Glow atlandı ({name}): {exc}")
+
     async def _text(self, name, text, x, y, size=22, color=WHITE):
         out = await self.call("add_layer", {
             "comp_id": self.comp_id, "kind": "text",
@@ -178,6 +189,7 @@ class HudBuilder:
                           fill=CYAN, stroke=None, sw=0.1, opacity=72,
                           shape_offset=(120, 0))
         await self._animate("RadarSweep", "rotation", [(0, -35), (self.duration, 325)])
+        await self._glow("RadarSweep")
         await self._shape("RadarHub", "ellipse", (cx, cy), (14, 14),
                           fill=CYAN, stroke=CYAN, sw=1, opacity=95)
         for i, (dx, dy) in enumerate([(0,-300),(300,0),(0,300),(-300,0)]):
@@ -244,6 +256,7 @@ class HudBuilder:
         await self._shape("ShieldCore","ellipse",(cx,cy),(34,34),fill=CYAN,stroke=CYAN,sw=1)
         await self._animate("ShieldOutline","Scale",[(0,[65,65]),(1.1,[108,108]),(1.5,[100,100])])
         await self._animate("ShieldCore","Opacity",[(0,0),(0.8,100),(1.1,65),(1.5,100)])
+        await self._glow("ShieldCore")
         await self._panel("left","DEFENSE MATRIX",["SHIELD: ACTIVE","CIPHER: VERIFIED","INTEGRITY: STABLE"])
         await self._text("ShieldTitle","CRYPTOGRAPHIC SHIELD",720,825,20,CYAN)
 
